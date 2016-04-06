@@ -3,6 +3,7 @@
 #define GLFW_DLL
 #include <GLFW\glfw3.h>
 #include <cassert>
+#include <cstdio>
 #include <glm\glm.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <glm\vec3.hpp>
@@ -20,7 +21,7 @@ int main() {
 	assert(start_gl());
 
 	// create ocean
-	OceanSurface ocean = OceanSurface(32, 32, 64.0f, 64.0f, 0.0005f, glm::vec2(31.0f, 0.0f), 9.8f);
+	OceanSurface ocean = OceanSurface(32, 32, 100.0f, 100.0f, 0.0005f, glm::vec2(31.0f, 0.0f), 9.8f);
 
 	// create program
 	GLuint shader_program = create_program_from_files("surface_vertex.glsl", "surface_fragment.glsl");
@@ -62,6 +63,7 @@ int main() {
 
 		glUseProgram(shader_program);
 		ocean.render((float) new_time);
+		//printf("%f\n", new_time);
 
 		/*-------------------*/
 

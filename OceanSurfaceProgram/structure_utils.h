@@ -5,6 +5,7 @@
 struct surface_vertex {
 	GLfloat x, y, z; // x, z - horizontal position, y - height. We pass them to OpenGL pipeline, 
 					//thats why GLfloat instead of float
+	GLfloat h_t0, h_t0_cc; // random complex amplitudes
 };
 
 struct complex_number {

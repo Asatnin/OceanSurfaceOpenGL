@@ -9,6 +9,8 @@
 OceanSurface::OceanSurface(int N, int M, float L_x, float L_z, float A, glm::vec2 wind, float g) : N(N), M(M), L_x(L_x),
 L_z(L_z), A(A), wind(wind), g(g) {
 	grid = new surface_vertex[N * M]; // construct wave height field grid
+	h_t0 = new complex_number[N * M];
+	h_t0_cc = new complex_number[N * M];
 	num_indices = 0;
 	indices = new GLuint[(N - 1) * (M - 1) * 6 + 2 * (N + M - 2)];
 
@@ -16,6 +18,9 @@ L_z(L_z), A(A), wind(wind), g(g) {
 	for (int i = 0; i < N; i++)
 		for (int j = 0; j < M; j++) {
 			int pos = i * M + j; // one-dimensional pos from linear two-dimensional grid
+
+			h_t0[pos] = h_t_0(i, j);
+			h_t0_cc[pos] = h_t_0(-i, -j).cc();
 
 			// we project our N*M grid coordinates to real world L_x*L_z coordinates
 			grid[pos].x = (i - (N >> 1)) * L_x / N;
@@ -71,41 +76,53 @@ void OceanSurface::prepare_for_pipeline() {
 	glGenVertexArrays(1, &vao);
 	glBindVertexArray(vao);
 	glBindBuffer(GL_ARRAY_BUFFER, points_vbo);
-	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, NULL);
 	glEnableVertexAttribArray(0);
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(surface_vertex), 0);
 }
 
 float OceanSurface::phillips_spectrum(int n, int m) {
-	glm::vec2 k = glm::vec2(M_PI * ((n << 1) - N) / L_x, M_PI * ((m << 1) - M) / L_z); // k is wavevector
+	glm::vec2 k = glm::vec2(M_PI * (2.0f * n - N) / L_x, M_PI * (2.0f * m - M) / L_z); // k is wavevector
 	float len_k = k.length();
 	// cut off very long waves
 	if (len_k < 0.000001) {
 		return 0.0;
 	}
 
+	glm::vec2 k_norm = glm::normalize(k);
+	glm::vec2 wind_norm = glm::normalize(wind);
+
 	float L = wind.length() * wind.length() / g;
 	float l = L / 1000.0f; // coefficent to suppress small waves
-	return A * exp(-1.0f / pow(len_k * L, 2)) / pow(len_k, 4) * pow(glm::dot(k, wind), 2) * exp(-pow(len_k * l, 2));
+	return A * exp(-1.0f / pow(len_k * L, 2.0f)) / pow(len_k, 4.0f) * pow(glm::dot(k, wind), 2.0f) * exp(-pow(len_k * l, 2.0f));
 }
 
 complex_number OceanSurface::h_t_0(int n, int m) {
-	static std::default_random_engine generator;
+	static std::random_device rd;
+	static std::mt19937 generator(rd());
 	static std::normal_distribution<float> distribution(0.0f, 1.0f);
 
 	float e_r = distribution(generator);
 	float e_i = distribution(generator);
+	//e_r = 0.02f; e_i = 0.02f;
 
 	return complex_number(e_r, e_i) * sqrt(phillips_spectrum(n, m) / 2.0f);
 }
 
 float OceanSurface::dispersion_relation(int n, int m) {
-	glm::vec2 k = glm::vec2(M_PI * ((n << 1) - N) / L_x, M_PI * ((m << 1) - M) / L_z); // k is wavevector
+	glm::vec2 k = glm::vec2(M_PI * (2.0f * n - N) / L_x, M_PI * (2.0f * m - M) / L_z); // k is wavevector
 	return sqrt(g * k.length());
 }
 
 complex_number OceanSurface::h_t(int n, int m, float t) {
 	float w_freq = dispersion_relation(n, m);
-	return h_t_0(n, m) * 2.0f * cos(w_freq * t);
+	float wt = w_freq * t;
+
+	complex_number c1(cos(wt), sin(wt));
+	complex_number c2(cos(wt), -sin(wt));
+
+	int pos = n * M + m;
+
+	return h_t0[pos] * c1 + h_t0_cc[pos] * c2;
 }
 
 float OceanSurface::h(float x, float z, float t) {
@@ -113,19 +130,17 @@ float OceanSurface::h(float x, float z, float t) {
 	glm::vec2 x_v = glm::vec2(x, z);
 
 	for (int i = 0; i < N; i++) {
-		float k_x = M_PI * ((i << 1) - N) / L_x;
+		float k_x = M_PI * (2.0f * i - N) / L_x;
 		for (int j = 0; j < M; j++) {
 			int pos = i * M + j;
-			float k_z = M_PI * ((j << 1) - M) / L_z;
+			float k_z = M_PI * (2.0f * j - M) / L_z;
 
 			glm::vec2 k = glm::vec2(k_x, k_z); // k is wavevector
 			float d = glm::dot(k, x_v);
 			complex_number h_0_t = h_t(i, j, t);
-			complex_number h_0_t_cc = h_t(-i, -j, t).cc();
 			complex_number c1(cos(d), sin(d));
-			complex_number c2(cos(d), -sin(d));
 
-			height = height + c1 * h_0_t + c2 * h_0_t_cc;
+			height = height + c1 * h_0_t;
 		}
 	}
 
@@ -138,7 +153,7 @@ void OceanSurface::render(float t) {
 		for (int j = 0; j < M; j++) {
 			int pos = i * M + j;
 			
-			grid[pos].y = h(grid[pos].x, grid[pos].y, t);
+			grid[pos].y = h(grid[pos].x, grid[pos].z, t);
 			//grid[pos].y = t;
 		}
 	}

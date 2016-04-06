@@ -11,6 +11,7 @@ class OceanSurface {
 		int N, M; // grid size for wave height field (should be power of two both)
 		float L_x, L_z; // real world dimensions for wave height field (in meters)
 		surface_vertex *grid; // each point in grid consists of 3d-world coordinates (x, y, z)
+		complex_number *h_t0, *h_t0_cc; // array of precomputed random complex amplitudes
 		float A; // numeric constant for wave height in phillips spectrum
 		glm::vec2 wind; // vector of wind direction
 		float g; // gravitationl constant
