@@ -24,8 +24,8 @@ L_z(L_z), A(A), wind(wind), g(g) {
 
 			// we project our N*M grid coordinates to real world L_x*L_z coordinates
 			grid[pos].x = (i - (N >> 1)) * L_x / N;
-			grid[pos].y = 0; // height is 0
-			grid[pos].z = j - (M >> 1) * L_z / M;
+			grid[pos].y = 0.0f; // height is 0
+			grid[pos].z = (j - (M >> 1)) * L_z / M;
 
 			// construct indices for index drawing
 			if (i != N - 1 && j != M - 1) {
@@ -81,8 +81,11 @@ void OceanSurface::prepare_for_pipeline() {
 }
 
 float OceanSurface::phillips_spectrum(int n, int m) {
-	glm::vec2 k = glm::vec2(M_PI * (2.0f * n - N) / L_x, M_PI * (2.0f * m - M) / L_z); // k is wavevector
-	float len_k = k.length();
+	/*glm::vec2 k = glm::vec2(M_PI * (2.0f * n - N) / L_x, M_PI * (2.0f * m - M) / L_z); // k is wavevector
+	if (n < 0 && m < 0) {
+		k = glm::vec2(M_PI * (2.0f * n + N) / L_x, M_PI * (2.0f * m + M) / L_z); // k is wavevector
+	}
+	float len_k = glm::length(k);
 	// cut off very long waves
 	if (len_k < 0.000001) {
 		return 0.0;
@@ -91,9 +94,33 @@ float OceanSurface::phillips_spectrum(int n, int m) {
 	glm::vec2 k_norm = glm::normalize(k);
 	glm::vec2 wind_norm = glm::normalize(wind);
 
-	float L = wind.length() * wind.length() / g;
+	float L = glm::length(wind) * glm::length(wind) / g;
 	float l = L / 1000.0f; // coefficent to suppress small waves
-	return A * exp(-1.0f / pow(len_k * L, 2.0f)) / pow(len_k, 4.0f) * pow(glm::dot(k, wind), 2.0f) * exp(-pow(len_k * l, 2.0f));
+	return A * exp(-1.0f / pow(len_k * L, 2.0f)) / pow(len_k, 4.0f) * pow(glm::dot(k_norm, wind_norm), 2.0f) * exp(-pow(len_k * l, 2.0f));*/
+	
+	glm::vec2 k = glm::vec2(M_PI * (2.0f * n - N) / L_x, M_PI * (2.0f * m - M) / L_z); // k is wavevector
+	if (n < 0 && m < 0) {
+		k = glm::vec2(M_PI * (2.0f * n + N) / L_x, M_PI * (2.0f * m + M) / L_z); // k is wavevector
+	}
+	float k_length = glm::length(k);
+	if (k_length < 0.000001) return 0.0;
+
+	float k_length2 = k_length  * k_length;
+	float k_length4 = k_length2 * k_length2;
+
+	//float k_dot_w = glm::dot(k, wind);
+	float k_dot_w = glm::dot(glm::normalize(k), glm::normalize(wind));
+	float k_dot_w2 = k_dot_w * k_dot_w;
+
+	float w_length = glm::length(wind);
+	float L = w_length * w_length / g;
+	float L2 = L * L;
+
+	float damping = 0.001;
+	float l2 = L2 * damping * damping;
+
+	float res =  A * exp(-1.0f / (k_length2 * L2)) / k_length4 * k_dot_w2 * exp(-k_length2 * l2);
+	return res;
 }
 
 complex_number OceanSurface::h_t_0(int n, int m) {
@@ -109,8 +136,10 @@ complex_number OceanSurface::h_t_0(int n, int m) {
 }
 
 float OceanSurface::dispersion_relation(int n, int m) {
+	float w_0 = 2.0f * M_PI / 200.0f;
 	glm::vec2 k = glm::vec2(M_PI * (2.0f * n - N) / L_x, M_PI * (2.0f * m - M) / L_z); // k is wavevector
-	return sqrt(g * k.length());
+	//return sqrt(g * glm::length(k));
+	return floor(sqrt(g * glm::length(k)) / w_0) * w_0;
 }
 
 complex_number OceanSurface::h_t(int n, int m, float t) {
@@ -123,6 +152,7 @@ complex_number OceanSurface::h_t(int n, int m, float t) {
 	int pos = n * M + m;
 
 	return h_t0[pos] * c1 + h_t0_cc[pos] * c2;
+	//return h_t0[pos] * c1;
 }
 
 float OceanSurface::h(float x, float z, float t) {

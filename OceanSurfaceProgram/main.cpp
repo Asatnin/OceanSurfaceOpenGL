@@ -21,7 +21,7 @@ int main() {
 	assert(start_gl());
 
 	// create ocean
-	OceanSurface ocean = OceanSurface(32, 32, 100.0f, 100.0f, 0.0005f, glm::vec2(31.0f, 0.0f), 9.8f);
+	OceanSurface ocean = OceanSurface(16, 16, 16.0f, 16.0f, 0.0005f, glm::vec2(15.0f, 0.0f), 9.8f);
 
 	// create program
 	GLuint shader_program = create_program_from_files("surface_vertex.glsl", "surface_fragment.glsl");
@@ -36,9 +36,9 @@ int main() {
 
 	// prepare matrices
 	glm::mat4 model = glm::mat4(1.0f);
-	glm::mat4 view = glm::lookAt(glm::vec3(40.0f, 20.0f, 40.0f), glm::vec3(0.0f, 0.0f, 0.0f),
+	glm::mat4 view = glm::lookAt(glm::vec3(15.0f, 5.0f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f),
 		glm::vec3(0.0f, 1.0f, 0.0f));
-	glm::mat4 projection = glm::perspective(45.0f, 1.0f * g_width / g_height, 0.1f, 100.0f);
+	glm::mat4 projection = glm::perspective(45.0f, 1.0f * g_width / g_height, 0.1f, 1000.0f);
 
 	// and push it to shader program
 	glUniformMatrix4fv(model_location, 1, GL_FALSE, &model[0][0]);
