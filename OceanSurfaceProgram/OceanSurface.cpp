@@ -133,6 +133,21 @@ float OceanSurface::h(float x, float z, float t) {
 }
 
 void OceanSurface::render(float t) {
+	// update wave height
+	for (int i = 0; i < N; i++) {
+		for (int j = 0; j < M; j++) {
+			int pos = i * M + j;
+			
+			grid[pos].y = h(grid[pos].x, grid[pos].y, t);
+			//grid[pos].y = t;
+		}
+	}
+
+	// update vertices in gpu array buffer
+	glBindBuffer(GL_ARRAY_BUFFER, points_vbo);
+	glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(surface_vertex)* N * M, grid);
+
+	// draw on screen
 	glBindVertexArray(vao);
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, indices_vbo);
 	glDrawElements(GL_LINES, num_indices, GL_UNSIGNED_INT, 0);
