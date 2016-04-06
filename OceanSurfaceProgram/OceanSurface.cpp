@@ -120,10 +120,12 @@ float OceanSurface::h(float x, float z, float t) {
 
 			glm::vec2 k = glm::vec2(k_x, k_z); // k is wavevector
 			float d = glm::dot(k, x_v);
-			complex_number h_t_t = h_t(i, j, t);
-			complex_number c(cos(d), sin(d));
+			complex_number h_0_t = h_t(i, j, t);
+			complex_number h_0_t_cc = h_t(-i, -j, t).cc();
+			complex_number c1(cos(d), sin(d));
+			complex_number c2(cos(d), -sin(d));
 
-			height = height + c * h_t_t;
+			height = height + c1 * h_0_t + c2 * h_0_t_cc;
 		}
 	}
 

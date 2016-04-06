@@ -24,4 +24,9 @@ struct complex_number {
 	complex_number operator *(const complex_number& b) const {
 		return complex_number(re * b.re - im * b.im, re * b.im + im * b.re);
 	}
+
+	// return complex conjugate
+	complex_number cc() {
+		return complex_number(re, -im);
+	}
 };
