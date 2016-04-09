@@ -21,7 +21,7 @@ int main() {
 	assert(start_gl());
 
 	// create ocean
-	OceanSurface ocean = OceanSurface(64, 64, 16.0f, 16.0f, 0.0005f, glm::vec2(15.0f, 0.0f), 9.8f);
+	OceanSurface ocean = OceanSurface(32, 32, 16.0f, 16.0f, 0.0005f, glm::vec2(15.0f, 0.0f), 9.8f);
 
 	// create program
 	GLuint shader_program = create_program_from_files("surface_vertex.glsl", "surface_fragment.glsl");
@@ -47,6 +47,14 @@ int main() {
 
 	//glClearColor(0.6f, 0.6f, 0.8f, 1.0f);
 	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+
+	/*glEnable(GL_DEPTH_TEST);
+	glDepthFunc(GL_LESS);*/
+
+	// faces culling
+	/*glEnable(GL_CULL_FACE);
+	glCullFace(GL_BACK);
+	glFrontFace(GL_CW);*/
 
 	// timer
 	double old_time = glfwGetTime(), new_time;

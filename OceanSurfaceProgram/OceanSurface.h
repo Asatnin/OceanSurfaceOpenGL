@@ -19,8 +19,10 @@ class OceanSurface {
 		glm::vec2 wind; // vector of wind direction
 		float g; // gravitationl constant
 		GLuint *indices; // indices for index drawing of grid
+		GLuint *triangle_indices; // indices for drawing of triangles
 		int num_indices; // number of indices
-		GLuint indices_vbo, points_vbo, vao; // vbo for indices and vertices, vao for vertices
+		int num_triangle_indices; // indices of triangles
+		GLuint indices_vbo, triangle_indices_vbo, points_vbo, vao; // vbo for indices and vertices, vao for vertices
 		void prepare_for_pipeline();
 		cFFT *fft;
 		MyFFT *myFFT;

@@ -13,7 +13,9 @@ L_z(L_z), A(A), wind(wind), g(g) {
 	h_t0_cc = new complex_number[N * M];
 	h_fft = new complex_number[N * M];
 	num_indices = 0;
+	num_triangle_indices = 0;
 	indices = new GLuint[(N - 1) * (M - 1) * 6 + 2 * (N + M - 2)];
+	triangle_indices = new GLuint[(N - 1) * (M - 1) * 6 * 10];
 	//fft
 	fft = new cFFT(N);
 	myFFT = new MyFFT(N, M);
@@ -49,10 +51,22 @@ L_z(L_z), A(A), wind(wind), g(g) {
 				indices[num_indices++] = pos;
 				indices[num_indices++] = pos + 1;
 			}
+
+			// construct indices for triangle index drawing
+			if (i != N - 1 && j != M - 1) {
+				triangle_indices[num_triangle_indices++] = pos;
+				triangle_indices[num_triangle_indices++] = pos + M + 2;
+				triangle_indices[num_triangle_indices++] = pos + 1;
+
+				triangle_indices[num_triangle_indices++] = pos;
+				triangle_indices[num_triangle_indices++] = pos + M + 1;
+				triangle_indices[num_triangle_indices++] = pos + M + 2;
+			}
 		}
 
 	// check that its okay
 	assert(num_indices == (N - 1) * (M - 1) * 6 + 2 * (N + M - 2));
+	//assert(num_triangle_indices, (N - 1) * (M - 1) * 6);
 
 	prepare_for_pipeline();
 }
@@ -65,7 +79,7 @@ OceanSurface::~OceanSurface() {
 }
 
 void OceanSurface::prepare_for_pipeline() {
-	vao = indices_vbo = points_vbo = 0;
+	vao = indices_vbo = points_vbo = triangle_indices_vbo = 0;
 	
 	// points vbo
 	glGenBuffers(1, &points_vbo);
@@ -77,6 +91,11 @@ void OceanSurface::prepare_for_pipeline() {
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, indices_vbo);
 	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint) * num_indices, indices, GL_STATIC_DRAW);
 
+	// triangle indices vbo
+	glGenBuffers(1, &triangle_indices_vbo);
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, triangle_indices_vbo);
+	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint)* num_triangle_indices, triangle_indices, GL_STATIC_DRAW);
+
 	// vao
 	glGenVertexArrays(1, &vao);
 	glBindVertexArray(vao);
@@ -86,7 +105,8 @@ void OceanSurface::prepare_for_pipeline() {
 }
 
 float OceanSurface::phillips_spectrum(int n, int m) {
-	/*glm::vec2 k = glm::vec2(M_PI * (2.0f * n - N) / L_x, M_PI * (2.0f * m - M) / L_z); // k is wavevector
+	/*
+	glm::vec2 k = glm::vec2(M_PI * (2.0f * n - N) / L_x, M_PI * (2.0f * m - M) / L_z); // k is wavevector
 	if (n < 0 && m < 0) {
 		k = glm::vec2(M_PI * (2.0f * n + N) / L_x, M_PI * (2.0f * m + M) / L_z); // k is wavevector
 	}
@@ -101,8 +121,8 @@ float OceanSurface::phillips_spectrum(int n, int m) {
 
 	float L = glm::length(wind) * glm::length(wind) / g;
 	float l = L / 1000.0f; // coefficent to suppress small waves
-	return A * exp(-1.0f / pow(len_k * L, 2.0f)) / pow(len_k, 4.0f) * pow(glm::dot(k_norm, wind_norm), 2.0f) * exp(-pow(len_k * l, 2.0f));*/
-	
+	return A * exp(-1.0f / pow(len_k * L, 2.0f)) / pow(len_k, 4.0f) * pow(glm::dot(k_norm, wind_norm), 2.0f) * exp(-pow(len_k * l, 2.0f));
+	*/
 	glm::vec2 k = glm::vec2(M_PI * (2.0f * n - N) / L_x, M_PI * (2.0f * m - M) / L_z); // k is wavevector
 	if (n < 0 && m < 0) {
 		k = glm::vec2(M_PI * (2.0f * n + N) / L_x, M_PI * (2.0f * m + M) / L_z); // k is wavevector
@@ -251,6 +271,12 @@ void OceanSurface::render() {
 
 	// draw on screen
 	glBindVertexArray(vao);
+
+	// draw lines
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, indices_vbo);
 	glDrawElements(GL_LINES, num_indices, GL_UNSIGNED_INT, 0);
+	
+	// draw triangles
+	//glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, triangle_indices_vbo);
+	//glDrawElements(GL_TRIANGLES, num_triangle_indices, GL_UNSIGNED_INT, 0);
 }
