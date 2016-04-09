@@ -82,12 +82,16 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="fft.cpp" />
     <ClCompile Include="gl_utils.cpp" />
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="MyFFT.cpp" />
     <ClCompile Include="OceanSurface.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="fft.h" />
     <ClInclude Include="gl_utils.h" />
+    <ClInclude Include="MyFFT.h" />
     <ClInclude Include="OceanSurface.h" />
     <ClInclude Include="structure_utils.h" />
   </ItemGroup>

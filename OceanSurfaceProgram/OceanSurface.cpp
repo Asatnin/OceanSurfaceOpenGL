@@ -11,14 +11,19 @@ L_z(L_z), A(A), wind(wind), g(g) {
 	grid = new surface_vertex[N * M]; // construct wave height field grid
 	h_t0 = new complex_number[N * M];
 	h_t0_cc = new complex_number[N * M];
+	h_fft = new complex_number[N * M];
 	num_indices = 0;
 	indices = new GLuint[(N - 1) * (M - 1) * 6 + 2 * (N + M - 2)];
+	//fft
+	fft = new cFFT(N);
+	myFFT = new MyFFT(N, M);
 
 	// assign each point its original 3d coordinates
 	for (int i = 0; i < N; i++)
 		for (int j = 0; j < M; j++) {
 			int pos = i * M + j; // one-dimensional pos from linear two-dimensional grid
 
+			// precomputer amplitudes at each point
 			h_t0[pos] = h_t_0(i, j);
 			h_t0_cc[pos] = h_t_0(-i, -j).cc();
 
@@ -177,17 +182,69 @@ float OceanSurface::h(float x, float z, float t) {
 	return height.re;
 }
 
-void OceanSurface::render(float t) {
+void OceanSurface::updateOceanSlow(float t) {
 	// update wave height
 	for (int i = 0; i < N; i++) {
 		for (int j = 0; j < M; j++) {
 			int pos = i * M + j;
-			
+
 			grid[pos].y = h(grid[pos].x, grid[pos].z, t);
 			//grid[pos].y = t;
 		}
 	}
+}
 
+void OceanSurface::updateOcean(float t) {
+	for (int i = 0; i < N; i++) {
+		for (int j = 0; j < M; j++) {
+			int pos = i * M + j;
+			
+			// calc all complex amplitudes in time t
+			h_fft[pos] = h_t(i, j, t);
+		}
+	}
+
+	/*complex_number *temp1 = new complex_number[N];
+	complex_number *temp2 = new complex_number[N];
+	for (unsigned int i = 0; i < N; i++)
+		temp1[i] = temp2[i] = h_fft[i * M + 1];
+	fft->fft(temp1, temp1, 1, 0);
+	myFFT->processVertical(temp2);
+	delete[] temp1;
+	delete[] temp2;*/
+
+	for (unsigned int i = 0; i < N; i++) { // horizontal fft for rows
+		//fft->fft(h_fft, h_fft, 1, i * M);
+		myFFT->processVertical(h_fft, 1, i * M);
+	}
+
+	for (unsigned int j = 0; j < M; j++) { // vertical fft for columns
+		//fft->fft(h_fft, h_fft, M, j);
+		myFFT->processHorizontal(h_fft, M, j);
+	}
+
+	/*for (int i = 0; i < N; i++) { // fft for rows
+		fft->fft(h_fft, h_fft, 1, i * M);
+	}
+
+	for (int j = 0; j < M; j++) { // fft for columns
+		fft->fft(h_fft, h_fft, M, j);
+	}*/
+
+	int sign;
+	float signs[] = { 1.0f, -1.0f };
+	for (int i = 0; i < N; i++) {
+		for (int j = 0; j < M; j++) {
+			int pos = i * M + j;
+
+			// flip sign
+			sign = signs[(i + j) & 1];
+			grid[pos].y = h_fft[pos].re * sign;
+		}
+	}
+}
+
+void OceanSurface::render() {
 	// update vertices in gpu array buffer
 	glBindBuffer(GL_ARRAY_BUFFER, points_vbo);
 	glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(surface_vertex)* N * M, grid);

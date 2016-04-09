@@ -21,6 +21,10 @@ struct complex_number {
 		return complex_number(b.re + re, b.im + im);
 	}
 
+	complex_number operator -(const complex_number& b) const {
+		return complex_number(re - b.re, im - b.im);
+	}
+
 	complex_number operator *(const complex_number& b) const {
 		return complex_number(re * b.re - im * b.im, re * b.im + im * b.re);
 	}

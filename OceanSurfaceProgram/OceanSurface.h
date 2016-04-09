@@ -3,6 +3,8 @@
 #include "structure_utils.h"
 #include <glm\vec2.hpp>
 #include <glm\geometric.hpp>
+#include "fft.h"
+#include "MyFFT.h"
 
 // class for ocean surface definition
 
@@ -12,6 +14,7 @@ class OceanSurface {
 		float L_x, L_z; // real world dimensions for wave height field (in meters)
 		surface_vertex *grid; // each point in grid consists of 3d-world coordinates (x, y, z)
 		complex_number *h_t0, *h_t0_cc; // array of precomputed random complex amplitudes
+		complex_number *h_fft; // fft-grid
 		float A; // numeric constant for wave height in phillips spectrum
 		glm::vec2 wind; // vector of wind direction
 		float g; // gravitationl constant
@@ -19,6 +22,8 @@ class OceanSurface {
 		int num_indices; // number of indices
 		GLuint indices_vbo, points_vbo, vao; // vbo for indices and vertices, vao for vertices
 		void prepare_for_pipeline();
+		cFFT *fft;
+		MyFFT *myFFT;
 
 	public:
 		OceanSurface(int N, int M, float L_x, float L_z, float A, glm::vec2 wind, float g); // constructor
@@ -29,5 +34,7 @@ class OceanSurface {
 		float dispersion_relation(int n, int m);
 		complex_number h_t(int n, int m, float t);
 		float h(float x, float z, float t);
-		void render(float t);
+		void updateOceanSlow(float t);
+		void updateOcean(float t);
+		void render();
 };
