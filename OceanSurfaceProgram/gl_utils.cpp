@@ -345,6 +345,29 @@ bool create_shader(const char* file_name, GLuint* shader, GLenum type) {
 	return true;
 }
 
+bool create_program(GLuint vert, GLuint geom, GLuint frag, GLuint* programme) {
+	*programme = glCreateProgram();
+	gl_log("created programme %u. attaching shaders %u, %u and %u...\n", *programme, vert, geom, frag);
+	glAttachShader(*programme, vert);
+	glAttachShader(*programme, geom);
+	glAttachShader(*programme, frag);
+	// link the shader programme. if binding input attributes do that before link
+	glLinkProgram(*programme);
+	GLint params = -1;
+	glGetProgramiv(*programme, GL_LINK_STATUS, &params);
+	if (GL_TRUE != params) {
+		gl_log_err("ERROR: could not link shader programme GL index %u\n", *programme);
+		print_program_info_log(*programme);
+		return false;
+	}
+	assert(is_program_valid(*programme));
+	// delete shaders here to free memory
+	glDeleteShader(vert);
+	glDeleteShader(geom);
+	glDeleteShader(frag);
+	return true;
+}
+
 bool create_program(GLuint vert, GLuint frag, GLuint* programme) {
 	*programme = glCreateProgram();
 	gl_log("created programme %u. attaching shaders %u and %u...\n", *programme, vert, frag);
@@ -371,5 +394,14 @@ GLuint create_program_from_files(const char* vert_file_name, const char* frag_fi
 	assert(create_shader(vert_file_name, &vert, GL_VERTEX_SHADER));
 	assert(create_shader(frag_file_name, &frag, GL_FRAGMENT_SHADER));
 	assert(create_program(vert, frag, &programme));
+	return programme;
+}
+
+GLuint create_program_from_files(const char* vert_file_name, const char* geom_file_name, const char* frag_file_name) {
+	GLuint vert, geom, frag, programme;
+	assert(create_shader(vert_file_name, &vert, GL_VERTEX_SHADER));
+	assert(create_shader(geom_file_name, &geom, GL_GEOMETRY_SHADER));
+	assert(create_shader(frag_file_name, &frag, GL_FRAGMENT_SHADER));
+	assert(create_program(vert, geom, frag, &programme));
 	return programme;
 }

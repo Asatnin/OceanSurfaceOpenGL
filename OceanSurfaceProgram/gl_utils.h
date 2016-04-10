@@ -33,4 +33,6 @@ bool is_program_valid(GLuint program);
 bool parse_file_into_str(const char* file_name, char* shader_str, int max_len);
 bool create_shader(const char* file_name, GLuint* shader, GLenum type);
 bool create_program(GLuint vert, GLuint frag, GLuint* programme);
+bool create_program(GLuint vert, GLuint geom, GLuint frag, GLuint* programme);
 GLuint create_program_from_files(const char* vert_file_name, const char* frag_file_name);
+GLuint create_program_from_files(const char* vert_file_name, const char* geom_file_name, const char* frag_file_name);

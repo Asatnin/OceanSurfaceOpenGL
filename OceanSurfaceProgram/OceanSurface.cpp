@@ -110,8 +110,12 @@ void OceanSurface::prepare_for_pipeline() {
 	glGenVertexArrays(1, &vao);
 	glBindVertexArray(vao);
 	glBindBuffer(GL_ARRAY_BUFFER, points_vbo);
+	// assign position to location = 0
 	glEnableVertexAttribArray(0);
 	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(surface_vertex), 0);
+	// assign normal to location = 1
+	glEnableVertexAttribArray(1);
+	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(surface_vertex), (GLvoid *)12);
 }
 
 float OceanSurface::phillips_spectrum(int n, int m) {
