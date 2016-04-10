@@ -9,9 +9,15 @@
 OceanSurface::OceanSurface(int N, int M, float L_x, float L_z, float A, glm::vec2 wind, float g) : N(N), M(M), L_x(L_x),
 L_z(L_z), A(A), wind(wind), g(g) {
 	grid = new surface_vertex[N * M]; // construct wave height field grid
+	init_positions = new vertex_2d[N * M];
 	h_t0 = new complex_number[N * M];
 	h_t0_cc = new complex_number[N * M];
 	h_fft = new complex_number[N * M];
+	dx_fft = new complex_number[N * M];
+	dz_fft = new complex_number[N * M];
+	gradient_x = new complex_number[N * M];
+	gradient_z = new complex_number[N * M];
+	lambda = -1.0f; // numeric constant for calculating displacement
 	num_indices = 0;
 	num_triangle_indices = 0;
 	indices = new GLuint[(N - 1) * (M - 1) * 6 + 2 * (N + M - 2)];
@@ -33,6 +39,10 @@ L_z(L_z), A(A), wind(wind), g(g) {
 			grid[pos].x = (i - (N >> 1)) * L_x / N;
 			grid[pos].y = 0.0f; // height is 0
 			grid[pos].z = (j - (M >> 1)) * L_z / M;
+
+			// save initial positions
+			init_positions[pos].x = grid[pos].x;
+			init_positions[pos].z = grid[pos].z;
 
 			// construct indices for index drawing
 			if (i != N - 1 && j != M - 1) {
@@ -216,50 +226,87 @@ void OceanSurface::updateOceanSlow(float t) {
 
 void OceanSurface::updateOcean(float t) {
 	for (int i = 0; i < N; i++) {
+		float k_x = float(M_PI) * (2.0f * i - N) / L_x; // x-coordinate of wavevector at 'pos'
+
 		for (int j = 0; j < M; j++) {
 			int pos = i * M + j;
+
+			float k_z = M_PI * (2.0f * j - M) / L_z; // z-coordinate of wavevector at 'pos'
+			float k_length = sqrtf(k_x * k_x + k_z * k_z); // length of wavevector 'k'
 			
 			// calc all complex amplitudes in time t
 			h_fft[pos] = h_t(i, j, t);
+
+			// calc all displacements in time t
+			if (k_length < 0.000001) { // ignore small wavevectors, put (0, 0) displacement
+				dx_fft[pos] = complex_number();
+				dz_fft[pos] = complex_number();
+			}
+			else { // calculate displacement via formula
+				dx_fft[pos] = complex_number(0.0f, -k_x / k_length) * h_fft[pos];
+				dz_fft[pos] = complex_number(0.0f, -k_z / k_length) * h_fft[pos];
+			}
+
+			// calc x-, and z- component of gradient of h_fft
+			gradient_x[pos] = complex_number(0.0f, k_x) * h_fft[pos];
+			gradient_z[pos] = complex_number(0.0f, k_z) * h_fft[pos];
 		}
 	}
-
-	/*complex_number *temp1 = new complex_number[N];
-	complex_number *temp2 = new complex_number[N];
-	for (unsigned int i = 0; i < N; i++)
-		temp1[i] = temp2[i] = h_fft[i * M + 1];
-	fft->fft(temp1, temp1, 1, 0);
-	myFFT->processVertical(temp2);
-	delete[] temp1;
-	delete[] temp2;*/
-
 	for (unsigned int i = 0; i < N; i++) { // horizontal fft for rows
-		//fft->fft(h_fft, h_fft, 1, i * M);
+		/*fft->fft(h_fft, h_fft, 1, i * M);
+		fft->fft(dx_fft, dx_fft, 1, i * M);
+		fft->fft(dz_fft, dz_fft, 1, i * M);
+		fft->fft(gradient_x, gradient_x, 1, i * M);
+		fft->fft(gradient_z, gradient_z, 1, i * M);*/
 		myFFT->processVertical(h_fft, 1, i * M);
+		myFFT->processVertical(dx_fft, 1, i * M);
+		myFFT->processVertical(dz_fft, 1, i * M);
+		myFFT->processVertical(gradient_x, 1, i * M);
+		myFFT->processVertical(gradient_z, 1, i * M);
 	}
 
 	for (unsigned int j = 0; j < M; j++) { // vertical fft for columns
-		//fft->fft(h_fft, h_fft, M, j);
+		/*fft->fft(h_fft, h_fft, M, j);
+		fft->fft(dx_fft, dx_fft, M, j);
+		fft->fft(dz_fft, dz_fft, M, j);
+		fft->fft(gradient_x, gradient_x, M, j);
+		fft->fft(gradient_z, gradient_z, M, j);*/
 		myFFT->processHorizontal(h_fft, M, j);
+		myFFT->processHorizontal(dx_fft, M, j);
+		myFFT->processHorizontal(dz_fft, M, j);
+		myFFT->processHorizontal(gradient_x, M, j);
+		myFFT->processHorizontal(gradient_z, M, j);
 	}
 
-	/*for (int i = 0; i < N; i++) { // fft for rows
-		fft->fft(h_fft, h_fft, 1, i * M);
-	}
-
-	for (int j = 0; j < M; j++) { // fft for columns
-		fft->fft(h_fft, h_fft, M, j);
-	}*/
-
+	glm::vec3 normal; // temp variable for normal calculation
 	int sign;
 	float signs[] = { 1.0f, -1.0f };
 	for (int i = 0; i < N; i++) {
 		for (int j = 0; j < M; j++) {
 			int pos = i * M + j;
 
-			// flip sign
+			// flip sign for height
 			sign = signs[(i + j) & 1];
 			grid[pos].y = h_fft[pos].re * sign;
+
+			// flip sign for displacement
+			dx_fft[pos] = dx_fft[pos] * sign;
+			dz_fft[pos] = dz_fft[pos] * sign;
+			// then calc displacement for original position in grid
+			//grid[pos].x = init_positions[pos].x + lambda * dx_fft[pos].re;
+			//grid[pos].z = init_positions[pos].z + lambda * dz_fft[pos].re;
+
+			// flip sign for gradient component;
+			gradient_x[pos] = gradient_x[pos] * sign;
+			gradient_z[pos] = gradient_z[pos] * sign;
+
+			// then calculate normal of vertex and normalize it
+			normal = glm::vec3(-gradient_x[pos].re, 1.0f, -gradient_z[pos].re);
+			normal = glm::normalize(normal);
+			// and save it to vertex structure
+			grid[pos].normal_x = normal.x;
+			grid[pos].normal_y = normal.y;
+			grid[pos].normal_z = normal.z;
 		}
 	}
 }

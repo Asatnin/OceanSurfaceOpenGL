@@ -21,7 +21,7 @@ int main() {
 	assert(start_gl());
 
 	// create ocean
-	OceanSurface ocean = OceanSurface(32, 32, 16.0f, 16.0f, 0.0005f, glm::vec2(15.0f, 0.0f), 9.8f);
+	OceanSurface ocean = OceanSurface(64, 64, 16.0f, 16.0f, 0.0005f, glm::vec2(15.0f, 0.0f), 9.8f);
 
 	// create program
 	GLuint shader_program = create_program_from_files("surface_vertex.glsl", "surface_fragment.glsl");

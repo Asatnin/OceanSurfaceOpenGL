@@ -5,6 +5,11 @@
 struct surface_vertex {
 	GLfloat x, y, z; // x, z - horizontal position, y - height. We pass them to OpenGL pipeline, 
 					//thats why GLfloat instead of float
+	GLfloat normal_x, normal_y, normal_z; // (x, y, z) components of normal vector
+};
+
+struct vertex_2d {
+	GLfloat x, z;
 };
 
 struct complex_number {
