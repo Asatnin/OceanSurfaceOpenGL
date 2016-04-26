@@ -10,6 +10,7 @@ OceanSurface::OceanSurface(int N, int M, float L_x, float L_z, float A, glm::vec
 L_z(L_z), A(A), wind(wind), g(g) {
 	grid = new surface_vertex[N * M]; // construct wave height field grid
 	init_positions = new vertex_2d[N * M];
+	grid_tex_cord = new tex_img_coord[N * N];
 	h_t0 = new complex_number[N * M];
 	h_t0_cc = new complex_number[N * M];
 	h_fft = new complex_number[N * M];
@@ -25,11 +26,59 @@ L_z(L_z), A(A), wind(wind), g(g) {
 	//fft
 	fft = new cFFT(N);
 	myFFT = new MyFFT(N, M);
+	// compute shader FFT stuff
+	GLuint fft_comp_program = create_comp_program_from_file("compute_shaders/fft_compute.glsl");
+
+	int bits = log2(N * 1.0f);
+	calc_binary_reverse(bits);
+	glGenBuffers(1, &rev_ind_buffer);
+	glBindBuffer(GL_SHADER_STORAGE_BUFFER, rev_ind_buffer);
+	glBufferData(GL_SHADER_STORAGE_BUFFER, N * sizeof(int), binary_reverse, GL_STATIC_DRAW);
+	glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+
+	GLint steps_location = glGetUniformLocation(fft_comp_program, "steps");
+	fft_column_location = glGetUniformLocation(fft_comp_program, "fft_column");
+
+	glUseProgram(fft_comp_program);
+	glUniform1i(steps_location, bits);
+
+	// texture for inpute height map
+	glGenTextures(1, &texture_H_t);
+	glBindTexture(GL_TEXTURE_2D, texture_H_t);
+	glTexStorage2D(GL_TEXTURE_2D, 1, GL_RG32F, N, N);
+	//glTexImage2D(GL_TEXTURE_2D, 0, GL_RG32F, N, N, 0, GL_RG, GL_FLOAT, 0);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+	// texture for output height map per rows
+	glGenTextures(1, &texture_H_fft_t_row);
+	glBindTexture(GL_TEXTURE_2D, texture_H_fft_t_row);
+	glTexStorage2D(GL_TEXTURE_2D, 1, GL_RG32F, N, N);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+	// texture for output height map per columns
+	glGenTextures(1, &texture_H_fft_t_col);
+	glBindTexture(GL_TEXTURE_2D, texture_H_fft_t_col);
+	glTexStorage2D(GL_TEXTURE_2D, 1, GL_RG32F, N, N);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+	// unbind all textures
+	glBindTexture(GL_TEXTURE_2D, 0);
 
 	// assign each point its original 3d coordinates
 	for (int i = 0; i < N; i++)
 		for (int j = 0; j < M; j++) {
 			int pos = i * M + j; // one-dimensional pos from linear two-dimensional grid
+
+			grid_tex_cord[pos] = tex_img_coord(i, j);
 
 			// precomputer amplitudes at each point
 			h_t0[pos] = h_t_0(i, j);
@@ -88,8 +137,29 @@ OceanSurface::~OceanSurface() {
 		delete[] indices;
 }
 
+void OceanSurface::calc_binary_reverse(int bits) {
+	binary_reverse = new int[N];
+
+	for (int i = 0; i < N; i++) {
+		int nrev = i, n = i;
+		for (int j = 1; j < bits; j++) {
+			n >>= 1;
+			nrev <<= 1;
+			nrev |= n & 1;   // give LSB of n to nrev
+		}
+		nrev &= N - 1;
+
+		binary_reverse[i] = nrev;
+	}
+}
+
 void OceanSurface::prepare_for_pipeline() {
-	vao = indices_vbo = points_vbo = triangle_indices_vbo = 0;
+	vao = indices_vbo = points_vbo = triangle_indices_vbo = img_coord_vbo = 0;
+
+	// img coords
+	glGenBuffers(1, &img_coord_vbo);
+	glBindBuffer(GL_ARRAY_BUFFER, img_coord_vbo);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(tex_img_coord) * N * N, grid_tex_cord, GL_STATIC_DRAW);
 	
 	// points vbo
 	glGenBuffers(1, &points_vbo);
@@ -116,6 +186,11 @@ void OceanSurface::prepare_for_pipeline() {
 	// assign normal to location = 1
 	glEnableVertexAttribArray(1);
 	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(surface_vertex), (GLvoid *)12);
+	// assign img coord to location = 2
+	glBindBuffer(GL_ARRAY_BUFFER, img_coord_vbo);
+	glEnableVertexAttribArray(2);
+	glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(tex_img_coord), 0);
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
 }
 
 float OceanSurface::phillips_spectrum(int n, int m) {
@@ -191,6 +266,7 @@ complex_number OceanSurface::h_t(int n, int m, float t) {
 	int pos = n * M + m;
 
 	return h_t0[pos] * c1 + h_t0_cc[pos] * c2;
+	//return h_t0[pos] * c1 + h_t0[pos2].cc() * c2;
 	//return h_t0[pos] * c1;
 }
 
@@ -256,6 +332,33 @@ void OceanSurface::updateOcean(float t) {
 			gradient_z[pos] = complex_number(0.0f, k_z) * h_fft[pos];
 		}
 	}
+
+	// fft in compute shader
+	glUseProgram(fft_comp_program);
+
+	// update texture
+	glBindTexture(GL_TEXTURE_2D, texture_H_t);
+	glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, N, N, GL_RG, GL_FLOAT, h_fft);
+	//glTexImage2D(GL_TEXTURE_2D, 0, GL_RG32F, N, N, 0, GL_RG, GL_FLOAT, h_fft);
+	glBindTexture(GL_TEXTURE_2D, 0);
+
+	// bind reverse indices
+	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, rev_ind_buffer);
+
+	// fft per rows
+	glUniform1i(fft_column_location, 0);
+	glBindImageTexture(0, texture_H_t, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RG32F);
+	glBindImageTexture(1, texture_H_fft_t_row, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RG32F);
+	glDispatchCompute(1, N, 1);
+	glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
+	// fft per columns
+	glUniform1i(fft_column_location, 1);
+	glBindImageTexture(0, texture_H_fft_t_row, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RG32F);
+	glBindImageTexture(1, texture_H_fft_t_col, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RG32F);
+	glDispatchCompute(1, N, 1);
+	glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
 	for (unsigned int i = 0; i < N; i++) { // horizontal fft for rows
 		/*fft->fft(h_fft, h_fft, 1, i * M);
 		fft->fft(dx_fft, dx_fft, 1, i * M);
@@ -291,7 +394,7 @@ void OceanSurface::updateOcean(float t) {
 
 			// flip sign for height
 			sign = signs[(i + j) & 1];
-			grid[pos].y = h_fft[pos].re * sign;
+			//grid[pos].y = h_fft[pos].re * sign;
 
 			// flip sign for displacement
 			dx_fft[pos] = dx_fft[pos] * sign;
@@ -316,6 +419,11 @@ void OceanSurface::updateOcean(float t) {
 }
 
 void OceanSurface::render() {
+	// bind fft height map
+	//glBindImageTexture(3, texture_H_fft_t_col, 0, GL_FALSE, 0, GL_READ_ONLY, GL_R32F);
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, texture_H_t);
+
 	// update vertices in gpu array buffer
 	glBindBuffer(GL_ARRAY_BUFFER, points_vbo);
 	glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(surface_vertex)* N * M, grid);

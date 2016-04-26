@@ -6,6 +6,7 @@
 #include <glm\geometric.hpp>
 #include "fft.h"
 #include "MyFFT.h"
+#include "gl_utils.h"
 
 // class for ocean surface definition
 
@@ -15,6 +16,7 @@ class OceanSurface {
 		float L_x, L_z; // real world dimensions for wave height field (in meters)
 		surface_vertex *grid; // each point in grid consists of 3d-world coordinates (x, y, z)
 		vertex_2d *init_positions; // initial positions for all grid points on plane OXZ
+		tex_img_coord *grid_tex_cord;
 		complex_number *h_t0, *h_t0_cc; // array of precomputed random complex amplitudes
 		complex_number *h_fft; // fft-grid for height field
 		complex_number *dx_fft; // x-displacement for each grid point
@@ -31,8 +33,13 @@ class OceanSurface {
 		int num_triangle_indices; // indices of triangles
 		GLuint indices_vbo, triangle_indices_vbo, points_vbo, vao; // vbo for indices and vertices, vao for vertices
 		void prepare_for_pipeline();
+		void calc_binary_reverse(int bits);
+		int *binary_reverse;
 		cFFT *fft;
 		MyFFT *myFFT;
+		GLuint fft_comp_program; // FFT in compute shader
+		GLuint texture_H_t, texture_H_fft_t_row, texture_H_fft_t_col, fft_column_location;
+		GLuint rev_ind_buffer, img_coord_vbo;
 
 	public:
 		OceanSurface(int N, int M, float L_x, float L_z, float A, glm::vec2 wind, float g); // constructor
