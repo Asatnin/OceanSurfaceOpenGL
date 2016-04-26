@@ -4,7 +4,6 @@
 #include <glm\vec2.hpp>
 #include <glm\vec3.hpp>
 #include <glm\geometric.hpp>
-#include "fft.h"
 #include "MyFFT.h"
 
 // class for ocean surface definition
@@ -31,7 +30,6 @@ class OceanSurface {
 		int num_triangle_indices; // indices of triangles
 		GLuint indices_vbo, triangle_indices_vbo, points_vbo, vao; // vbo for indices and vertices, vao for vertices
 		void prepare_for_pipeline();
-		cFFT *fft;
 		MyFFT *myFFT;
 
 	public:

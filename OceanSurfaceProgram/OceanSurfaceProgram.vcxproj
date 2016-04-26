@@ -82,7 +82,6 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="fft.cpp" />
     <ClCompile Include="gl_utils.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="MyFFT.cpp" />

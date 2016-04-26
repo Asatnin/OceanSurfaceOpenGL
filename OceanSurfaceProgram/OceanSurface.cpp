@@ -23,7 +23,6 @@ L_z(L_z), A(A), wind(wind), g(g) {
 	indices = new GLuint[(N - 1) * (M - 1) * 6 + 2 * (N + M - 2)];
 	triangle_indices = new GLuint[(N - 1) * (M - 1) * 6 * 10];
 	//fft
-	fft = new cFFT(N);
 	myFFT = new MyFFT(N, M);
 
 	// assign each point its original 3d coordinates
