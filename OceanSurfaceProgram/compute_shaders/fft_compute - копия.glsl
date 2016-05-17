@@ -2,7 +2,7 @@
 
 // compute shader for FFT
 
-#define N 256 // N should be power of 2
+#define N 32 // N should be power of 2
 #define M_PI 3.14159265358979323846
 
 uniform int fft_column; // flag for processing FFT in rows or columns: 0 or 1
@@ -17,7 +17,7 @@ layout(std430, binding = 2) buffer Ind {
 
 shared vec2 sharedStore[N]; // here we write buttefly operation result on each step
 
-layout(local_size_x = 128, local_size_y = 1) in; // local_size_x should be N / 2
+layout(local_size_x = 16, local_size_y = 1) in; // local_size_x should be N / 2
 
 // complex number multiplication
 vec2 multiply_complex(vec2 a, vec2 b) {

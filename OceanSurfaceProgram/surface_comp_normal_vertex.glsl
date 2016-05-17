@@ -15,6 +15,8 @@ uniform mat4 model;
 uniform mat4 view;
 uniform mat4 projection;
 
+out vec4 out_normal;
+
 void main() {
 	vec2 height = imageLoad(imageFFT, ivec2(img_coord.x, img_coord.y)).xy;
 	//vec2 height = texture(imageFFT, vec2(0.5, 0.5)).xy;
@@ -29,5 +31,6 @@ void main() {
 	vec2 grad_z = imageLoad(imageGradZ, ivec2(img_coord.x, img_coord.y)).xy;
 	vec3 normal = normalize(vec3(-grad_x.x, 1.0, -grad_z.x));
 
-	gl_Position = projection * view * model * vec4(vertex_position + disp, 1.0);
+	gl_Position = vec4(vertex_position + disp, 1.0);
+	out_normal = vec4(normal, 0.0);
 }

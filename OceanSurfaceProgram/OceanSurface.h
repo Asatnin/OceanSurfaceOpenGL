@@ -38,7 +38,17 @@ class OceanSurface {
 		cFFT *fft;
 		MyFFT *myFFT;
 		GLuint fft_comp_program; // FFT in compute shader
+
+		// variables of update height map compute program
+		GLuint upd_height_program, total_time_location;
+		GLuint texture_H_t0, texture_H_t0_cc;
+		GLuint texture_Dx, texture_Dz, texture_Gradx, texture_Gradz;
+
 		GLuint texture_H_t, texture_H_fft_t_row, texture_H_fft_t_col, fft_column_location;
+		GLuint tex_dx_fft_row, tex_dx_fft;
+		GLuint tex_dz_fft_row, tex_dz_fft;
+		GLuint tex_gradx_fft_row, tex_gradx_fft;
+		GLuint tex_gradz_fft_row, tex_gradz_fft;
 		GLuint rev_ind_buffer, img_coord_vbo;
 
 	public:
