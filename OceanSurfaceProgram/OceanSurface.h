@@ -51,8 +51,12 @@ class OceanSurface {
 		GLuint tex_gradz_fft_row, tex_gradz_fft;
 		GLuint rev_ind_buffer, img_coord_vbo;
 
+		bool lines;
+		bool gpu;
+
 	public:
-		OceanSurface(int N, int M, float L_x, float L_z, float A, glm::vec2 wind, float g); // constructor
+		OceanSurface(int N, int M, float L_x, float L_z, float A, glm::vec2 _wind, float g,
+			bool _lines, bool _gpu); // constructor
 		~OceanSurface(); // destructor
 		// here and further n = n' and m = m' (equally to formulas for n'=0..N-1, m'=0..M-1)
 		float phillips_spectrum(int n, int m);

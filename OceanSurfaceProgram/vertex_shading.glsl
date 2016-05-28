@@ -9,15 +9,16 @@ layout(rg32f, binding = 1) readonly uniform image2D imageDx;
 layout(rg32f, binding = 2) readonly uniform image2D imageDz;
 layout(rg32f, binding = 3) readonly uniform image2D imageGradX;
 layout(rg32f, binding = 4) readonly uniform image2D imageGradZ;
-//layout(binding = 0) uniform sampler2D imageFFT;
 
 uniform mat4 model;
 uniform mat4 view;
 uniform mat4 projection;
 
+out vec3 Position;
+out vec3 Normal;
+
 void main() {
 	vec2 height = imageLoad(imageFFT, ivec2(img_coord.x, img_coord.y)).xy;
-	//vec2 height = texture(imageFFT, vec2(0.5, 0.5)).xy;
 	vec2 dx = imageLoad(imageDx, ivec2(img_coord.x, img_coord.y)).xy;
 	vec2 dz = imageLoad(imageDz, ivec2(img_coord.x, img_coord.y)).xy;
 	//vec3 disp = vec3(0.0, 0.0, 0.0);
@@ -29,5 +30,7 @@ void main() {
 	vec2 grad_z = imageLoad(imageGradZ, ivec2(img_coord.x, img_coord.y)).xy;
 	vec3 normal = normalize(vec3(-grad_x.x, 1.0, -grad_z.x));
 
+	Normal = (inverse(transpose(view * model)) * vec4(normal, 0.0)).xyz;
+	Position = vec3(view * model * vec4(vertex_position + disp, 1.0));
 	gl_Position = projection * view * model * vec4(vertex_position + disp, 1.0);
 }
