@@ -219,6 +219,58 @@ L_z(L_z), A(A), wind(_wind), g(g), lines(_lines), gpu(_gpu) {
 	glBindTexture(GL_TEXTURE_2D, texture_Gradz);
 	glTexStorage2D(GL_TEXTURE_2D, 1, GL_RG32F, N, N);
 	glBindTexture(GL_TEXTURE_2D, 0);
+
+	// Fresnel textures
+	int fres_size = 64;
+	float g_SkyBlending = 16.0f;
+	unsigned int *buffer = new unsigned int[fres_size];
+	for (int i = 0; i < fres_size; i++)
+	{
+		float cos_a = i / (float)fres_size;
+		// Using water's refraction index 1.33
+		unsigned int fresnel = (unsigned int)(D3DXFresnelTerm(cos_a, 1.33f) * 255);
+
+		unsigned int sky_blend = (unsigned int)(powf(1 / (1 + cos_a), g_SkyBlending) * 255);
+
+		buffer[i] = (sky_blend << 8) | fresnel;
+	}
+	glGenTextures(1, &tex_Fresnel);
+	glBindTexture(GL_TEXTURE_1D, tex_Fresnel);
+	glTexStorage1D(GL_TEXTURE_1D, 1, GL_RGBA8, fres_size);
+	glTexSubImage1D(GL_TEXTURE_1D, 0, 0, fres_size, GL_RGBA, GL_UNSIGNED_INT, buffer);
+
+	const GLfloat border[] = { 1.0f, 1.0f, 1.0f, 1.0f };
+	glTexParameterfv(GL_TEXTURE_1D, GL_TEXTURE_BORDER_COLOR, border);
+	glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_COMPARE_FUNC, GL_NEVER);
+	glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+	glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+
+	glBindTexture(GL_TEXTURE_1D, 0);
+	delete[] buffer;
+
+	// Reflect cube textures
+	tex_ReflectCube = SOIL_load_OGL_single_cubemap
+		(
+			"textures/sky_cube.dds",
+			SOIL_DDS_CUBEMAP_FACE_ORDER,
+			SOIL_LOAD_AUTO,
+			SOIL_CREATE_NEW_ID,
+			SOIL_FLAG_MIPMAPS | SOIL_FLAG_DDS_LOAD_DIRECT
+		);
+}
+
+float OceanSurface::D3DXFresnelTerm(float costheta, float refractionindex) {
+	float a, d, g, result;
+
+	g = sqrtf(refractionindex * refractionindex + costheta * costheta - 1.0f);
+	a = g + costheta;
+	d = g - costheta;
+	result = (costheta * a - 1.0f) * (costheta * a - 1.0f) / ((costheta * d + 1.0f) * (costheta * d + 1.0f)) + 1.0f;
+	result *= 0.5f * d * d / (a * a);
+	
+	return result;
 }
 
 OceanSurface::~OceanSurface() {
@@ -625,6 +677,14 @@ void OceanSurface::updateOcean(float t) {
 }
 
 void OceanSurface::render() {
+	// fresnel texture
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_1D, tex_Fresnel);
+	
+	// reflect texture
+	glActiveTexture(GL_TEXTURE1);
+	glBindTexture(GL_TEXTURE_CUBE_MAP, tex_ReflectCube);
+
 	// bind fft height map
 	if (gpu) {
 		glBindImageTexture(0, texture_H_fft_t_col, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RG32F);

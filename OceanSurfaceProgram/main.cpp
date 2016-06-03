@@ -21,7 +21,9 @@ int main() {
 	assert(start_gl());
 
 	// create program
-	GLuint shader_program = create_program_from_files("surface_comp_vertex.glsl", "surface_fragment.glsl");
+	//GLuint shader_program = create_program_from_files("surface_comp_vertex.glsl", "surface_fragment.glsl");
+	GLuint shader_program = create_program_from_files("vertex_soph_shading.glsl",
+		"fragment_soph_shading.glsl");
 	//GLuint shader_program = create_program_from_files("vertex_shading.glsl", "fragment_shading.glsl");
 	//GLuint shader_program = create_program_from_files("surface_comp_normal_vertex.glsl",
 		//"geom_points_normal.glsl", "surface_fragment_normal.glsl");
@@ -30,7 +32,7 @@ int main() {
 		//"surface_fragment_normal.glsl");
 
 	// create ocean
-	OceanSurface ocean = OceanSurface(64, 64, 16.0f, 16.0f, 0.0005f, glm::vec2(15.0f, 0.0f), 9.8f, true, true);
+	OceanSurface ocean = OceanSurface(64, 64, 16.0f, 16.0f, 0.0005f, glm::vec2(15.0f, 0.0f), 9.8f, false, true);
 
 	// extract uniforms
 	GLint model_location = glGetUniformLocation(shader_program, "model");

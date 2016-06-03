@@ -7,6 +7,7 @@
 #include "fft.h"
 #include "MyFFT.h"
 #include "gl_utils.h"
+#include <SOIL.h>
 
 // class for ocean surface definition
 
@@ -53,6 +54,9 @@ class OceanSurface {
 
 		bool lines;
 		bool gpu;
+
+		GLuint tex_Fresnel, tex_ReflectCube;
+		float D3DXFresnelTerm(float costheta, float refractionindex);
 
 	public:
 		OceanSurface(int N, int M, float L_x, float L_z, float A, glm::vec2 _wind, float g,
