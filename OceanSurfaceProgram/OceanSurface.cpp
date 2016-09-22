@@ -221,7 +221,7 @@ L_z(L_z), A(A), wind(_wind), g(g), lines(_lines), gpu(_gpu) {
 	glBindTexture(GL_TEXTURE_2D, 0);
 
 	// Fresnel textures
-	int fres_size = 64;
+	int fres_size = 128;
 	float g_SkyBlending = 16.0f;
 	unsigned int *buffer = new unsigned int[fres_size];
 	for (int i = 0; i < fres_size; i++)

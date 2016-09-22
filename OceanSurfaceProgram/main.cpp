@@ -32,7 +32,7 @@ int main() {
 		//"surface_fragment_normal.glsl");
 
 	// create ocean
-	OceanSurface ocean = OceanSurface(64, 64, 16.0f, 16.0f, 0.0005f, glm::vec2(15.0f, 0.0f), 9.8f, false, true);
+	OceanSurface ocean = OceanSurface(256, 256, 16.0f, 16.0f, 0.0005f, glm::vec2(15.0f, 0.0f), 9.8f, false, true);
 
 	// extract uniforms
 	GLint model_location = glGetUniformLocation(shader_program, "model");
