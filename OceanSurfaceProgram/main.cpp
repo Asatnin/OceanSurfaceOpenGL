@@ -20,13 +20,20 @@ int main() {
 	assert(restart_gl_log());
 	assert(start_gl());
 
-	// create ocean
-	OceanSurface ocean = OceanSurface(64, 64, 16.0f, 16.0f, 0.0005f, glm::vec2(15.0f, 0.0f), 9.8f);
-
 	// create program
-	GLuint shader_program = create_program_from_files("surface_vertex.glsl", "surface_fragment.glsl");
+	//GLuint shader_program = create_program_from_files("surface_comp_vertex.glsl", "surface_fragment.glsl");
+	GLuint shader_program = create_program_from_files("vertex_soph_shading.glsl",
+		"fragment_soph_shading.glsl");
+	//GLuint shader_program = create_program_from_files("vertex_shading.glsl", "fragment_shading.glsl");
+	//GLuint shader_program = create_program_from_files("surface_comp_normal_vertex.glsl",
+		//"geom_points_normal.glsl", "surface_fragment_normal.glsl");
+	//GLuint shader_program = create_program_from_files("surface_vertex.glsl", "surface_fragment.glsl");
 	//GLuint shader_program = create_program_from_files("surface_vertex_normal.glsl", "geom_points_normal.glsl",
 		//"surface_fragment_normal.glsl");
+
+	// create ocean
+	OceanSurface ocean = OceanSurface(256, 256, 16.0f, 16.0f, 0.0005f, glm::vec2(15.0f, 0.0f), 9.8f, false, true);
+>>>>>>> sophisticated_lighting
 
 	// extract uniforms
 	GLint model_location = glGetUniformLocation(shader_program, "model");
@@ -46,6 +53,8 @@ int main() {
 	glUniformMatrix4fv(model_location, 1, GL_FALSE, &model[0][0]);
 	glUniformMatrix4fv(view_location, 1, GL_FALSE, &view[0][0]);
 	glUniformMatrix4fv(projection_location, 1, GL_FALSE, &projection[0][0]);
+
+	glUseProgram(0);
 
 	//glClearColor(0.6f, 0.6f, 0.8f, 1.0f);
 	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
@@ -73,10 +82,12 @@ int main() {
 
 		/*-----render--------*/
 
-		glUseProgram(shader_program);
 		//ocean.updateOceanSlow((float)new_time);
 		ocean.updateOcean((float)new_time);
+
+		glUseProgram(shader_program);
 		ocean.render();
+		glUseProgram(0);
 		//printf("%f\n", new_time);
 
 		/*-------------------*/

@@ -6,10 +6,11 @@
 
 // realization of OceanSurface class
 
-OceanSurface::OceanSurface(int N, int M, float L_x, float L_z, float A, glm::vec2 wind, float g) : N(N), M(M), L_x(L_x),
-L_z(L_z), A(A), wind(wind), g(g) {
+OceanSurface::OceanSurface(int N, int M, float L_x, float L_z, float A, glm::vec2 _wind, float g, bool _lines, bool _gpu) : N(N), M(M), L_x(L_x),
+L_z(L_z), A(A), wind(_wind), g(g), lines(_lines), gpu(_gpu) {
 	grid = new surface_vertex[N * M]; // construct wave height field grid
 	init_positions = new vertex_2d[N * M];
+	grid_tex_cord = new tex_img_coord[N * N];
 	h_t0 = new complex_number[N * M];
 	h_t0_cc = new complex_number[N * M];
 	h_fft = new complex_number[N * M];
@@ -22,13 +23,113 @@ L_z(L_z), A(A), wind(wind), g(g) {
 	num_triangle_indices = 0;
 	indices = new GLuint[(N - 1) * (M - 1) * 6 + 2 * (N + M - 2)];
 	triangle_indices = new GLuint[(N - 1) * (M - 1) * 6 * 10];
+	if (gpu) {
+		wind = glm::vec2(wind.y, wind.x);
+	}
 	//fft
 	myFFT = new MyFFT(N, M);
+
+	// compute shader FFT stuff
+	char *s_name = "compute_shaders/fft_compute.glsl";
+	if (N == 32) {
+		s_name = "compute_shaders/fft_compute_32.glsl";
+	}
+	if (N == 64) {
+		s_name = "compute_shaders/fft_compute_64.glsl";
+	}
+	if (N == 128) {
+		s_name = "compute_shaders/fft_compute_128.glsl";
+	}
+	if (N == 256) {
+		s_name = "compute_shaders/fft_compute_256.glsl";
+	}
+	if (N == 512) {
+		s_name = "compute_shaders/fft_compute_512.glsl";
+	}
+	fft_comp_program = create_comp_program_from_file(s_name);
+
+	int bits = log2(N * 1.0f);
+	calc_binary_reverse(bits);
+	glGenBuffers(1, &rev_ind_buffer);
+	glBindBuffer(GL_SHADER_STORAGE_BUFFER, rev_ind_buffer);
+	glBufferData(GL_SHADER_STORAGE_BUFFER, N * sizeof(int), binary_reverse, GL_STATIC_DRAW);
+	glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+
+	GLint steps_location = glGetUniformLocation(fft_comp_program, "steps");
+	fft_column_location = glGetUniformLocation(fft_comp_program, "fft_column");
+
+	glUseProgram(fft_comp_program);
+	glUniform1i(steps_location, bits);
+
+	// texture for inpute height map
+	glGenTextures(1, &texture_H_t);
+	glBindTexture(GL_TEXTURE_2D, texture_H_t);
+	glTexStorage2D(GL_TEXTURE_2D, 1, GL_RG32F, N, N);
+	//glTexImage2D(GL_TEXTURE_2D, 0, GL_RG32F, N, N, 0, GL_RG, GL_FLOAT, 0);
+	/*glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);*/
+
+	// texture for output height map per rows
+	glGenTextures(1, &texture_H_fft_t_row);
+	glBindTexture(GL_TEXTURE_2D, texture_H_fft_t_row);
+	glTexStorage2D(GL_TEXTURE_2D, 1, GL_RG32F, N, N);
+	/*glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);*/
+
+	// texture for output height map per columns
+	glGenTextures(1, &texture_H_fft_t_col);
+	glBindTexture(GL_TEXTURE_2D, texture_H_fft_t_col);
+	glTexStorage2D(GL_TEXTURE_2D, 1, GL_RG32F, N, N);
+	/*glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);*/
+
+	// texture for fft dx
+	glGenTextures(1, &tex_dx_fft_row);
+	glBindTexture(GL_TEXTURE_2D, tex_dx_fft_row);
+	glTexStorage2D(GL_TEXTURE_2D, 1, GL_RG32F, N, N);
+	glGenTextures(1, &tex_dx_fft);
+	glBindTexture(GL_TEXTURE_2D, tex_dx_fft);
+	glTexStorage2D(GL_TEXTURE_2D, 1, GL_RG32F, N, N);
+
+	// texture for fft dz
+	glGenTextures(1, &tex_dz_fft_row);
+	glBindTexture(GL_TEXTURE_2D, tex_dz_fft_row);
+	glTexStorage2D(GL_TEXTURE_2D, 1, GL_RG32F, N, N);
+	glGenTextures(1, &tex_dz_fft);
+	glBindTexture(GL_TEXTURE_2D, tex_dz_fft);
+	glTexStorage2D(GL_TEXTURE_2D, 1, GL_RG32F, N, N);
+
+	// texture for fft gradx
+	glGenTextures(1, &tex_gradx_fft_row);
+	glBindTexture(GL_TEXTURE_2D, tex_gradx_fft_row);
+	glTexStorage2D(GL_TEXTURE_2D, 1, GL_RG32F, N, N);
+	glGenTextures(1, &tex_gradx_fft);
+	glBindTexture(GL_TEXTURE_2D, tex_gradx_fft);
+	glTexStorage2D(GL_TEXTURE_2D, 1, GL_RG32F, N, N);
+
+	// texture for fft gradz
+	glGenTextures(1, &tex_gradz_fft_row);
+	glBindTexture(GL_TEXTURE_2D, tex_gradz_fft_row);
+	glTexStorage2D(GL_TEXTURE_2D, 1, GL_RG32F, N, N);
+	glGenTextures(1, &tex_gradz_fft);
+	glBindTexture(GL_TEXTURE_2D, tex_gradz_fft);
+	glTexStorage2D(GL_TEXTURE_2D, 1, GL_RG32F, N, N);
+
+	// unbind all textures
+	glBindTexture(GL_TEXTURE_2D, 0);
 
 	// assign each point its original 3d coordinates
 	for (int i = 0; i < N; i++)
 		for (int j = 0; j < M; j++) {
 			int pos = i * M + j; // one-dimensional pos from linear two-dimensional grid
+
+			grid_tex_cord[pos] = tex_img_coord(i, j);
 
 			// precomputer amplitudes at each point
 			h_t0[pos] = h_t_0(i, j);
@@ -64,12 +165,12 @@ L_z(L_z), A(A), wind(wind), g(g) {
 			// construct indices for triangle index drawing
 			if (i != N - 1 && j != M - 1) {
 				triangle_indices[num_triangle_indices++] = pos;
-				triangle_indices[num_triangle_indices++] = pos + M + 2;
+				triangle_indices[num_triangle_indices++] = pos + N + 1;
 				triangle_indices[num_triangle_indices++] = pos + 1;
 
 				triangle_indices[num_triangle_indices++] = pos;
-				triangle_indices[num_triangle_indices++] = pos + M + 1;
-				triangle_indices[num_triangle_indices++] = pos + M + 2;
+				triangle_indices[num_triangle_indices++] = pos + N;
+				triangle_indices[num_triangle_indices++] = pos + N + 1;
 			}
 		}
 
@@ -78,6 +179,97 @@ L_z(L_z), A(A), wind(wind), g(g) {
 	//assert(num_triangle_indices, (N - 1) * (M - 1) * 6);
 
 	prepare_for_pipeline();
+
+	// update height map compute shader program
+	upd_height_program = create_comp_program_from_file("compute_shaders/update_height_map.glsl");
+	GLint len_location = glGetUniformLocation(upd_height_program, "L");;
+	GLint n_location = glGetUniformLocation(upd_height_program, "N");
+	total_time_location = glGetUniformLocation(upd_height_program, "totalTime");
+	glUseProgram(upd_height_program);
+	glUniform1f(len_location, L_x);
+	glUniform1i(n_location, N);
+	glUseProgram(0);
+
+	// height map textures
+	glGenTextures(1, &texture_H_t0);
+	glGenTextures(1, &texture_H_t0_cc);
+	glBindTexture(GL_TEXTURE_2D, texture_H_t0);
+	glTexStorage2D(GL_TEXTURE_2D, 1, GL_RG32F, N, N);
+	glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, N, N, GL_RG, GL_FLOAT, h_t0);
+	glBindTexture(GL_TEXTURE_2D, texture_H_t0_cc);
+	glTexStorage2D(GL_TEXTURE_2D, 1, GL_RG32F, N, N);
+	glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, N, N, GL_RG, GL_FLOAT, h_t0_cc);
+	glBindTexture(GL_TEXTURE_2D, 0);
+
+	// displacement map textures
+	glGenTextures(1, &texture_Dx);
+	glGenTextures(1, &texture_Dz);
+	glBindTexture(GL_TEXTURE_2D, texture_Dx);
+	glTexStorage2D(GL_TEXTURE_2D, 1, GL_RG32F, N, N);
+	glBindTexture(GL_TEXTURE_2D, texture_Dz);
+	glTexStorage2D(GL_TEXTURE_2D, 1, GL_RG32F, N, N);
+	glBindTexture(GL_TEXTURE_2D, 0);
+
+	// gradient map textures
+	glGenTextures(1, &texture_Gradx);
+	glGenTextures(1, &texture_Gradz);
+	glBindTexture(GL_TEXTURE_2D, texture_Gradx);
+	glTexStorage2D(GL_TEXTURE_2D, 1, GL_RG32F, N, N);
+	glBindTexture(GL_TEXTURE_2D, texture_Gradz);
+	glTexStorage2D(GL_TEXTURE_2D, 1, GL_RG32F, N, N);
+	glBindTexture(GL_TEXTURE_2D, 0);
+
+	// Fresnel textures
+	int fres_size = 128;
+	float g_SkyBlending = 16.0f;
+	unsigned int *buffer = new unsigned int[fres_size];
+	for (int i = 0; i < fres_size; i++)
+	{
+		float cos_a = i / (float)fres_size;
+		// Using water's refraction index 1.33
+		unsigned int fresnel = (unsigned int)(D3DXFresnelTerm(cos_a, 1.33f) * 255);
+
+		unsigned int sky_blend = (unsigned int)(powf(1 / (1 + cos_a), g_SkyBlending) * 255);
+
+		buffer[i] = (sky_blend << 8) | fresnel;
+	}
+	glGenTextures(1, &tex_Fresnel);
+	glBindTexture(GL_TEXTURE_1D, tex_Fresnel);
+	glTexStorage1D(GL_TEXTURE_1D, 1, GL_RGBA8, fres_size);
+	glTexSubImage1D(GL_TEXTURE_1D, 0, 0, fres_size, GL_RGBA, GL_UNSIGNED_INT, buffer);
+
+	const GLfloat border[] = { 1.0f, 1.0f, 1.0f, 1.0f };
+	glTexParameterfv(GL_TEXTURE_1D, GL_TEXTURE_BORDER_COLOR, border);
+	glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_COMPARE_FUNC, GL_NEVER);
+	glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+	glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+
+	glBindTexture(GL_TEXTURE_1D, 0);
+	delete[] buffer;
+
+	// Reflect cube textures
+	tex_ReflectCube = SOIL_load_OGL_single_cubemap
+		(
+			"textures/sky_cube.dds",
+			SOIL_DDS_CUBEMAP_FACE_ORDER,
+			SOIL_LOAD_AUTO,
+			SOIL_CREATE_NEW_ID,
+			SOIL_FLAG_MIPMAPS | SOIL_FLAG_DDS_LOAD_DIRECT
+		);
+}
+
+float OceanSurface::D3DXFresnelTerm(float costheta, float refractionindex) {
+	float a, d, g, result;
+
+	g = sqrtf(refractionindex * refractionindex + costheta * costheta - 1.0f);
+	a = g + costheta;
+	d = g - costheta;
+	result = (costheta * a - 1.0f) * (costheta * a - 1.0f) / ((costheta * d + 1.0f) * (costheta * d + 1.0f)) + 1.0f;
+	result *= 0.5f * d * d / (a * a);
+	
+	return result;
 }
 
 OceanSurface::~OceanSurface() {
@@ -87,13 +279,34 @@ OceanSurface::~OceanSurface() {
 		delete[] indices;
 }
 
+void OceanSurface::calc_binary_reverse(int bits) {
+	binary_reverse = new int[N];
+
+	for (int i = 0; i < N; i++) {
+		int nrev = i, n = i;
+		for (int j = 1; j < bits; j++) {
+			n >>= 1;
+			nrev <<= 1;
+			nrev |= n & 1;   // give LSB of n to nrev
+		}
+		nrev &= N - 1;
+
+		binary_reverse[i] = nrev;
+	}
+}
+
 void OceanSurface::prepare_for_pipeline() {
-	vao = indices_vbo = points_vbo = triangle_indices_vbo = 0;
+	vao = indices_vbo = points_vbo = triangle_indices_vbo = img_coord_vbo = 0;
+
+	// img coords
+	glGenBuffers(1, &img_coord_vbo);
+	glBindBuffer(GL_ARRAY_BUFFER, img_coord_vbo);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(tex_img_coord) * N * N, grid_tex_cord, GL_STATIC_DRAW);
 	
 	// points vbo
 	glGenBuffers(1, &points_vbo);
 	glBindBuffer(GL_ARRAY_BUFFER, points_vbo);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(surface_vertex) * N * M, grid, GL_DYNAMIC_DRAW);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(surface_vertex) * N * M, grid, gpu ? GL_STATIC_DRAW : GL_DYNAMIC_DRAW);
 
 	// indices vbo
 	glGenBuffers(1, &indices_vbo);
@@ -115,6 +328,11 @@ void OceanSurface::prepare_for_pipeline() {
 	// assign normal to location = 1
 	glEnableVertexAttribArray(1);
 	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(surface_vertex), (GLvoid *)12);
+	// assign img coord to location = 2
+	glBindBuffer(GL_ARRAY_BUFFER, img_coord_vbo);
+	glEnableVertexAttribArray(2);
+	glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(tex_img_coord), 0);
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
 }
 
 float OceanSurface::phillips_spectrum(int n, int m) {
@@ -190,6 +408,7 @@ complex_number OceanSurface::h_t(int n, int m, float t) {
 	int pos = n * M + m;
 
 	return h_t0[pos] * c1 + h_t0_cc[pos] * c2;
+	//return h_t0[pos] * c1 + h_t0[pos2].cc() * c2;
 	//return h_t0[pos] * c1;
 }
 
@@ -228,32 +447,173 @@ void OceanSurface::updateOceanSlow(float t) {
 }
 
 void OceanSurface::updateOcean(float t) {
-	for (int i = 0; i < N; i++) {
-		float k_x = float(M_PI) * (2.0f * i - N) / L_x; // x-coordinate of wavevector at 'pos'
+	if (!gpu) {
 
-		for (int j = 0; j < M; j++) {
-			int pos = i * M + j;
+		for (int i = 0; i < N; i++) {
+			float k_x = float(M_PI) * (2.0f * i - N) / L_x; // x-coordinate of wavevector at 'pos'
 
-			float k_z = M_PI * (2.0f * j - M) / L_z; // z-coordinate of wavevector at 'pos'
-			float k_length = sqrtf(k_x * k_x + k_z * k_z); // length of wavevector 'k'
-			
-			// calc all complex amplitudes in time t
-			h_fft[pos] = h_t(i, j, t);
+			for (int j = 0; j < M; j++) {
+				int pos = i * M + j;
 
-			// calc all displacements in time t
-			if (k_length < 0.000001) { // ignore small wavevectors, put (0, 0) displacement
-				dx_fft[pos] = complex_number();
-				dz_fft[pos] = complex_number();
+				float k_z = M_PI * (2.0f * j - M) / L_z; // z-coordinate of wavevector at 'pos'
+				float k_length = sqrtf(k_x * k_x + k_z * k_z); // length of wavevector 'k'
+
+				// calc all complex amplitudes in time t
+				h_fft[pos] = h_t(i, j, t);
+
+				// calc all displacements in time t
+				if (k_length < 0.000001) { // ignore small wavevectors, put (0, 0) displacement
+					dx_fft[pos] = complex_number();
+					dz_fft[pos] = complex_number();
+				}
+				else { // calculate displacement via formula
+					dx_fft[pos] = complex_number(0.0f, -k_x / k_length) * h_fft[pos];
+					dz_fft[pos] = complex_number(0.0f, -k_z / k_length) * h_fft[pos];
+				}
+
+				// calc x-, and z- component of gradient of h_fft
+				gradient_x[pos] = complex_number(0.0f, k_x) * h_fft[pos];
+				gradient_z[pos] = complex_number(0.0f, k_z) * h_fft[pos];
 			}
-			else { // calculate displacement via formula
-				dx_fft[pos] = complex_number(0.0f, -k_x / k_length) * h_fft[pos];
-				dz_fft[pos] = complex_number(0.0f, -k_z / k_length) * h_fft[pos];
-			}
-
-			// calc x-, and z- component of gradient of h_fft
-			gradient_x[pos] = complex_number(0.0f, k_x) * h_fft[pos];
-			gradient_z[pos] = complex_number(0.0f, k_z) * h_fft[pos];
 		}
+
+		// row flipping
+		/*/complex_number *h_fft_2 = new complex_number[N * N];
+		for (int i = 0; i < N; i++) {
+			for (int j = 0; j < M; j++) {
+				int pos_1 = i * M + j;
+				int pos_2 = (N - i - 1) * M + j;
+				h_fft_2[pos_2] = h_fft[pos_1];
+			}
+		}*/
+	} 
+	else {
+
+		// first update height map with time amplitudes (and displacement map with gradient map);
+		glUseProgram(upd_height_program);
+
+		glUniform1f(total_time_location, t);
+		// height map
+		glBindImageTexture(0, texture_H_t0, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RG32F);
+		glBindImageTexture(1, texture_H_t0_cc, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RG32F);
+		glBindImageTexture(2, texture_H_t, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RG32F);
+
+		// displacement map
+		glBindImageTexture(3, texture_Dx, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RG32F);
+		glBindImageTexture(4, texture_Dz, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RG32F);
+
+		// gradient map
+		glBindImageTexture(5, texture_Gradx, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RG32F);
+		glBindImageTexture(6, texture_Gradz, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RG32F);
+
+		glDispatchCompute(N, N, 1);
+		glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
+		glUseProgram(0);
+
+		// fft in compute shader
+		glUseProgram(fft_comp_program);
+
+		// update texture
+		/*glBindTexture(GL_TEXTURE_2D, texture_H_t);
+		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, N, N, GL_RG, GL_FLOAT, h_fft);
+		//glTexImage2D(GL_TEXTURE_2D, 0, GL_RG32F, N, N, 0, GL_RG, GL_FLOAT, h_fft);
+		glBindTexture(GL_TEXTURE_2D, 0);*/
+
+
+		// bind reverse indices
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, rev_ind_buffer);
+
+		/*______________HEIGHT MAP FFT________________*/
+
+		// fft per rows
+		glUniform1i(fft_column_location, 0);
+		glBindImageTexture(0, texture_H_t, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RG32F);
+		glBindImageTexture(1, texture_H_fft_t_row, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RG32F);
+		glDispatchCompute(1, N, 1);
+		glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
+		// fft per columns
+		glUniform1i(fft_column_location, 1);
+		glBindImageTexture(0, texture_H_fft_t_row, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RG32F);
+		glBindImageTexture(1, texture_H_fft_t_col, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RG32F);
+		glDispatchCompute(1, N, 1);
+		glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
+		/*______________DISPLACEMENT-X MAP FFT________________*/
+
+		// fft per rows
+		glUniform1i(fft_column_location, 0);
+		glBindImageTexture(0, texture_Dx, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RG32F);
+		glBindImageTexture(1, tex_dx_fft_row, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RG32F);
+		glDispatchCompute(1, N, 1);
+		glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
+		// fft per columns
+		glUniform1i(fft_column_location, 1);
+		glBindImageTexture(0, tex_dx_fft_row, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RG32F);
+		glBindImageTexture(1, tex_dx_fft, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RG32F);
+		glDispatchCompute(1, N, 1);
+		glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
+		/*______________DISPLACEMENT-Z MAP FFT________________*/
+
+		// fft per rows
+		glUniform1i(fft_column_location, 0);
+		glBindImageTexture(0, texture_Dz, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RG32F);
+		glBindImageTexture(1, tex_dz_fft_row, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RG32F);
+		glDispatchCompute(1, N, 1);
+		glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
+		// fft per columns
+		glUniform1i(fft_column_location, 1);
+		glBindImageTexture(0, tex_dz_fft_row, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RG32F);
+		glBindImageTexture(1, tex_dz_fft, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RG32F);
+		glDispatchCompute(1, N, 1);
+		glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
+		/*______________GRADIENT-X MAP FFT________________*/
+
+		// fft per rows
+		glUniform1i(fft_column_location, 0);
+		glBindImageTexture(0, texture_Gradx, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RG32F);
+		glBindImageTexture(1, tex_gradx_fft_row, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RG32F);
+		glDispatchCompute(1, N, 1);
+		glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
+		// fft per columns
+		glUniform1i(fft_column_location, 1);
+		glBindImageTexture(0, tex_gradx_fft_row, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RG32F);
+		glBindImageTexture(1, tex_gradx_fft, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RG32F);
+		glDispatchCompute(1, N, 1);
+		glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
+		/*______________GRADIENT-Z MAP FFT________________*/
+
+		// fft per rows
+		glUniform1i(fft_column_location, 0);
+		glBindImageTexture(0, texture_Gradz, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RG32F);
+		glBindImageTexture(1, tex_gradz_fft_row, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RG32F);
+		glDispatchCompute(1, N, 1);
+		glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
+		// fft per columns
+		glUniform1i(fft_column_location, 1);
+		glBindImageTexture(0, tex_gradz_fft_row, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RG32F);
+		glBindImageTexture(1, tex_gradz_fft, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RG32F);
+		glDispatchCompute(1, N, 1);
+		glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
+		glUseProgram(0);
+	}
+
+	int error = glGetError();
+	if (error != GL_NO_ERROR) {
+		int b = 4;
+	}
+
+	if (gpu) {
+		return;
 	}
 	for (unsigned int i = 0; i < N; i++) { // horizontal fft for rows
 		/*fft->fft(h_fft, h_fft, 1, i * M);
@@ -281,6 +641,7 @@ void OceanSurface::updateOcean(float t) {
 		myFFT->processHorizontal(gradient_z, M, j);
 	}
 
+	
 	glm::vec3 normal; // temp variable for normal calculation
 	int sign;
 	float signs[] = { 1.0f, -1.0f };
@@ -315,18 +676,45 @@ void OceanSurface::updateOcean(float t) {
 }
 
 void OceanSurface::render() {
-	// update vertices in gpu array buffer
-	glBindBuffer(GL_ARRAY_BUFFER, points_vbo);
-	glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(surface_vertex)* N * M, grid);
+	// fresnel texture
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_1D, tex_Fresnel);
+	
+	// reflect texture
+	glActiveTexture(GL_TEXTURE1);
+	glBindTexture(GL_TEXTURE_CUBE_MAP, tex_ReflectCube);
+
+	// bind fft height map
+	if (gpu) {
+		glBindImageTexture(0, texture_H_fft_t_col, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RG32F);
+		glBindImageTexture(1, tex_dx_fft, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RG32F);
+		glBindImageTexture(2, tex_dz_fft, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RG32F);
+		glBindImageTexture(3, tex_gradx_fft, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RG32F);
+		glBindImageTexture(4, tex_gradz_fft, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RG32F);
+	}
+	//glActiveTexture(GL_TEXTURE0);
+	//glBindTexture(GL_TEXTURE_2D, texture_H_t);
+	//glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, N, N, GL_RG, GL_FLOAT, h_fft);
+	//glTexImage2D(GL_TEXTURE_2D, 0, GL_RG32F, N, N, 0, GL_RG, GL_FLOAT, h_fft);
+	//glBindTexture(GL_TEXTURE_2D, 0);
+
+	if (!gpu) {
+		// update vertices in gpu array buffer
+		glBindBuffer(GL_ARRAY_BUFFER, points_vbo);
+		glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(surface_vertex)* N * M, grid);
+	}
 
 	// draw on screen
 	glBindVertexArray(vao);
 
-	// draw lines
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, indices_vbo);
-	glDrawElements(GL_LINES, num_indices, GL_UNSIGNED_INT, 0);
-	
-	// draw triangles
-	//glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, triangle_indices_vbo);
-	//glDrawElements(GL_TRIANGLES, num_triangle_indices, GL_UNSIGNED_INT, 0);
+	if (lines) {
+		// draw lines
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, indices_vbo);
+		glDrawElements(GL_LINES, num_indices, GL_UNSIGNED_INT, 0);
+	}
+	else {
+		// draw triangles
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, triangle_indices_vbo);
+		glDrawElements(GL_TRIANGLES, num_triangle_indices, GL_UNSIGNED_INT, 0);
+	}
 }

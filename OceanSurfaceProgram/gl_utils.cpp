@@ -64,6 +64,7 @@ void log_gl_params() {
 	int v[2];
 	unsigned char s = 0;
 	GLenum params[] = {
+		GL_MAX_VERTEX_IMAGE_UNIFORMS,
 		GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS,
 		GL_MAX_CUBE_MAP_TEXTURE_SIZE,
 		GL_MAX_DRAW_BUFFERS,
@@ -78,6 +79,7 @@ void log_gl_params() {
 		GL_STEREO,
 	};
 	const char* names[] = {
+		"GL_MAX_VERTEX_IMAGE_UNIFORMS",
 		"GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS",
 		"GL_MAX_CUBE_MAP_TEXTURE_SIZE",
 		"GL_MAX_DRAW_BUFFERS",
@@ -93,17 +95,17 @@ void log_gl_params() {
 	};
 	gl_log("GL Context Params:\n");
 	// integers - only works if the order is 0-10 integer return types
-	for (i = 0; i < 10; i++) {
+	for (i = 0; i < 11; i++) {
 		int v = 0;
 		glGetIntegerv(params[i], &v);
 		gl_log("%s %i\n", names[i], v);
 	}
 	// others
 	v[0] = v[1] = 0;
-	glGetIntegerv(params[10], v);
+	glGetIntegerv(params[11], v);
 	gl_log("%s %i %i\n", names[10], v[0], v[1]);
-	glGetBooleanv(params[11], &s);
-	gl_log("%s %i\n", names[11], (unsigned int)s);
+	glGetBooleanv(params[12], &s);
+	gl_log("%s %i\n", names[12], (unsigned int)s);
 	gl_log("-----------------------------\n");
 }
 
@@ -345,6 +347,25 @@ bool create_shader(const char* file_name, GLuint* shader, GLenum type) {
 	return true;
 }
 
+bool create_program(GLuint comp, GLuint* programme) {
+	*programme = glCreateProgram();
+	gl_log("created programme %u. attaching compute shader %u...\n", *programme, comp);
+	glAttachShader(*programme, comp);
+	// link the shader programme. if binding input attributes do that before link
+	glLinkProgram(*programme);
+	GLint params = -1;
+	glGetProgramiv(*programme, GL_LINK_STATUS, &params);
+	if (GL_TRUE != params) {
+		gl_log_err("ERROR: could not link shader programme GL index %u\n", *programme);
+		print_program_info_log(*programme);
+		return false;
+	}
+	assert(is_program_valid(*programme));
+	// delete shaders here to free memory
+	glDeleteShader(comp);
+	return true;
+}
+
 bool create_program(GLuint vert, GLuint geom, GLuint frag, GLuint* programme) {
 	*programme = glCreateProgram();
 	gl_log("created programme %u. attaching shaders %u, %u and %u...\n", *programme, vert, geom, frag);
@@ -387,6 +408,13 @@ bool create_program(GLuint vert, GLuint frag, GLuint* programme) {
 	glDeleteShader(vert);
 	glDeleteShader(frag);
 	return true;
+}
+
+GLuint create_comp_program_from_file(const char* comp_file_name) {
+	GLuint comp, programme;
+	assert(create_shader(comp_file_name, &comp, GL_COMPUTE_SHADER));
+	assert(create_program(comp, &programme));
+	return programme;
 }
 
 GLuint create_program_from_files(const char* vert_file_name, const char* frag_file_name) {

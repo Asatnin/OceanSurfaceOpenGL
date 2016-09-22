@@ -12,6 +12,13 @@ struct vertex_2d {
 	GLfloat x, z;
 };
 
+struct tex_img_coord {
+	GLfloat x, z;
+
+	tex_img_coord() { x = 0; z = 0; }
+	tex_img_coord(GLfloat _x, GLfloat _z) { x = _x; z = _z; }
+};
+
 struct complex_number {
 	float re, im;
 

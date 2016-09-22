@@ -93,3 +93,23 @@ void MyFFT::process(complex_number *data, unsigned int size) {
 		}
 	}
 }
+
+
+// data is already rearranged in binary reverse order
+/*void MyFFT::process(complex_number *data, unsigned int size) {
+	for (unsigned int i = 1; i <= (int)log2f(size); i++) {
+		unsigned int m = 1 << i;
+		float delta = 2.0f * float(M_PI) / m;
+		const complex_number mult(-2.0f * sinf(delta / 2) * sinf(delta / 2), sinf(delta));
+		for (unsigned int k = 0; k < size; k += m) {
+			complex_number factor(1.0f, 0.0f);
+			for (unsigned int j = 0; j < (m >> 1); j++) {
+				complex_number t = factor * data[k + j + (m >> 1)];
+				complex_number u = data[k + j];
+				data[k + j] = u + t;
+				data[k + j + (m >> 1)] = u - t;
+				factor = factor + factor * mult;
+			}
+		}
+	}
+}*/
